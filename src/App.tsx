@@ -33,7 +33,7 @@ import type { Analysis, Die, DieStatus, Pattern, Wafer } from './types'
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const fallbackAnalysis: Analysis = {
-  source: 'Local preview fallback',
+  source: 'DEMO / backend unavailable',
   current_wafer_id: 'WFR-0421',
   wafer_id: 'WFR-0421',
   kpis: { total_die: 24, pass_die: 19, fail_die: 5, inactive_die: 4, yield: 79.2, fail_rate: 20.8 },
@@ -91,6 +91,8 @@ function App() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [analysisMode, setAnalysisMode] = useState<'demo' | 'uploaded'>('demo')
+  const [demoSource, setDemoSource] = useState<'backend' | 'local'>('local')
 
   const currentWafer: Wafer = useMemo(() => {
     return analysis.wafers.find((wafer) => wafer.wafer_id === selectedWafer) || analysis
@@ -101,8 +103,16 @@ function App() {
       .then((payload) => {
         setAnalysis(payload)
         setSelectedWafer(payload.current_wafer_id)
+        setAnalysisMode('demo')
+        setDemoSource('backend')
       })
-      .catch(() => setToast('API not running — local preview data loaded'))
+      .catch(() => {
+        setAnalysis(fallbackAnalysis)
+        setSelectedWafer(fallbackAnalysis.current_wafer_id)
+        setAnalysisMode('demo')
+        setDemoSource('local')
+        setToast('API not running — local demo preview loaded')
+      })
       .finally(() => setIsLoading(false))
   }, [])
 
@@ -124,6 +134,7 @@ function App() {
       const payload = await uploadCsv(file)
       setAnalysis(payload)
       setSelectedWafer(payload.current_wafer_id)
+      setAnalysisMode('uploaded')
       setToast(`${file.name} 분석 완료`)
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : '업로드를 처리하지 못했습니다.')
@@ -139,11 +150,15 @@ function App() {
       const payload = await loadDemo()
       setAnalysis(payload)
       setSelectedWafer(payload.current_wafer_id)
+      setAnalysisMode('demo')
+      setDemoSource('backend')
       setToast('데모 웨이퍼 세트로 전환했습니다')
     } catch {
       setAnalysis(fallbackAnalysis)
       setSelectedWafer(fallbackAnalysis.current_wafer_id)
-      setToast('로컬 미리보기 데이터를 불러왔습니다')
+      setAnalysisMode('demo')
+      setDemoSource('local')
+      setToast('백엔드 연결 실패 — 로컬 데모 미리보기입니다')
     } finally {
       setIsLoading(false)
     }
@@ -159,7 +174,7 @@ function App() {
       ['inactive_die', currentWafer.kpis.inactive_die],
       ['yield_percent', currentWafer.kpis.yield],
       ['fail_rate_percent', currentWafer.kpis.fail_rate],
-      ...currentWafer.patterns.map((pattern) => [`pattern_${pattern.name.toLowerCase().replace(/ /g, '_')}_score`, pattern.score]),
+      ...currentWafer.patterns.map((pattern) => [`pattern_${pattern.name.toLowerCase().replace(/ /g, '_')}_rule_signal_score`, pattern.score]),
       ...currentWafer.zones.map((zone) => [`zone_${zone.zone.toLowerCase()}_fail_rate`, zone.fail_rate]),
     ]
     const csv = rows.map((row) => row.join(',')).join('\n')
@@ -178,6 +193,7 @@ function App() {
     { label: 'Yield Trends', icon: BarChart3 },
     { label: 'Pattern Review', icon: Network },
   ]
+  const isDemoMode = analysisMode === 'demo'
 
   return (
     <div className="min-h-screen bg-ink text-slate-800">
@@ -241,7 +257,7 @@ function App() {
           <div className="mx-auto max-w-[1536px] px-5 py-7 md:px-8 md:py-10">
             <section className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
               <div>
-                <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-signal"><Activity size={13} />Inline quality console <span className="text-slate-700">·</span> {analysis.source}</div>
+                <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-signal"><Activity size={13} />Inline quality console <span className="text-slate-400">·</span> {isDemoMode ? 'DEMO MODE' : 'UPLOADED CSV'} <span className="text-slate-400">·</span> {analysis.source}</div>
                 <h1 className="text-3xl font-bold tracking-[-0.04em] text-slate-900 md:text-[42px]">Wafer quality intelligence<span className="text-signal">.</span></h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Spatial review for yield engineers. Inspect the map, isolate a signature, and hand the next shift a decision-ready signal.</p>
               </div>
@@ -253,10 +269,12 @@ function App() {
               </div>
             </section>
 
+            {isDemoMode && <div className="demo-banner mt-6"><FlaskConical size={17} className="shrink-0 text-amber-600" /><div><strong>DEMO MODE</strong><span>{demoSource === 'local' ? ' Backend 연결이 없어 로컬 미리보기 데이터를 표시 중입니다.' : ' 생성된 샘플 데이터입니다. 실제 분석을 위해 CSV를 업로드하세요.'}</span></div></div>}
+
             {error && <div className="mt-6 flex items-start gap-3 rounded-xl border border-signal/30 bg-signal/10 px-4 py-3 text-sm text-signal"><AlertTriangle size={17} className="mt-0.5 shrink-0" /><div className="flex-1">{error}<div className="mt-1 text-xs text-signal/70">Required: wafer_id, die_x, die_y, status. See the CSV schema panel below.</div></div><button onClick={() => setError('')}><X size={15} /></button></div>}
 
             <section className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Yield" value={formatPercent(currentWafer.kpis.yield)} delta="+2.4% vs. prior lot" tone="mint" icon={<Gauge size={17} />} />
+              <KpiCard label="Yield" value={formatPercent(currentWafer.kpis.yield)} tone="mint" icon={<Gauge size={17} />} />
               <KpiCard label="Active die" value={formatNumber(currentWafer.kpis.total_die)} delta={`${formatNumber(currentWafer.kpis.pass_die)} passing`} tone="cyan" icon={<Grid2X2 size={17} />} />
               <KpiCard label="Fail die" value={formatNumber(currentWafer.kpis.fail_die)} delta={`${formatPercent(currentWafer.kpis.fail_rate)} of active`} tone="signal" icon={<AlertTriangle size={17} />} />
               <KpiCard label="Edge risk" value={formatPercent(currentWafer.zones.find((zone) => zone.zone === 'Edge')?.fail_rate || 0)} delta="Rule-based zone signal" tone="amber" icon={<Zap size={17} />} />
@@ -277,9 +295,9 @@ function App() {
 
               <div className="space-y-5">
                 <div className="panel p-5 md:p-6">
-                  <div className="flex items-start justify-between"><div><div className="eyebrow">Defect signature</div><h2 className="mt-1 text-lg font-semibold text-slate-900">Pattern review</h2></div><span className="badge badge-orange"><FlaskConical size={12} />RULE ENGINE</span></div>
+                  <div className="flex items-start justify-between"><div><div className="eyebrow">Defect signature</div><h2 className="mt-1 text-lg font-semibold text-slate-900">Rule-based signals</h2></div><span className="badge badge-orange"><FlaskConical size={12} />RULE SIGNAL</span></div>
                   <div className="mt-5 space-y-4">{currentWafer.patterns.map((pattern, index) => <PatternRow key={pattern.name} pattern={pattern} rank={index + 1} />)}</div>
-                  <div className="mt-5 flex items-start gap-2 rounded-lg border border-cyan/15 bg-cyan/5 p-3 text-[11px] leading-5 text-slate-400"><Sparkles size={14} className="mt-0.5 shrink-0 text-cyan" /><span>AI classification slot is ready. Connect a WM-811K or custom model to replace heuristics when your labeled set is available.</span></div>
+                  <div className="mt-5 flex items-start gap-2 rounded-lg border border-cyan/15 bg-cyan/5 p-3 text-[11px] leading-5 text-slate-500"><Sparkles size={14} className="mt-0.5 shrink-0 text-cyan" /><span>Scores are heuristic signal strength from spatial rules, not AI probability or accuracy. The AI classification slot is ready for a WM-811K or custom model.</span></div>
                 </div>
                 <ZoneChart zones={currentWafer.zones} />
               </div>
@@ -306,8 +324,8 @@ function App() {
   )
 }
 
-function KpiCard({ label, value, delta, tone, icon }: { label: string; value: string; delta: string; tone: string; icon: React.ReactNode }) {
-  return <div className="panel relative overflow-hidden p-5"><div className={`absolute right-[-20px] top-[-25px] h-24 w-24 rounded-full blur-3xl ${tone === 'signal' ? 'bg-signal/10' : tone === 'mint' ? 'bg-mint/10' : tone === 'cyan' ? 'bg-cyan/10' : 'bg-amber-300/10'}`} /><div className="relative flex items-center justify-between"><span className="eyebrow">{label}</span><span className={`kpi-icon ${tone}`}>{icon}</span></div><div className="relative mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-900">{value}</div><div className="relative mt-2 flex items-center gap-1.5 text-[11px] text-slate-500"><span className={`h-1.5 w-1.5 rounded-full ${tone === 'signal' ? 'bg-red-500' : 'bg-mint'}`} />{delta}</div></div>
+function KpiCard({ label, value, delta, tone, icon }: { label: string; value: string; delta?: string; tone: string; icon: React.ReactNode }) {
+  return <div className="panel relative overflow-hidden p-5"><div className={`absolute right-[-20px] top-[-25px] h-24 w-24 rounded-full blur-3xl ${tone === 'signal' ? 'bg-signal/10' : tone === 'mint' ? 'bg-mint/10' : tone === 'cyan' ? 'bg-cyan/10' : 'bg-amber-300/10'}`} /><div className="relative flex items-center justify-between"><span className="eyebrow">{label}</span><span className={`kpi-icon ${tone}`}>{icon}</span></div><div className="relative mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-900">{value}</div>{delta && <div className="relative mt-2 flex items-center gap-1.5 text-[11px] text-slate-500"><span className={`h-1.5 w-1.5 rounded-full ${tone === 'signal' ? 'bg-red-500' : 'bg-mint'}`} />{delta}</div>}</div>
 }
 
 function LegendDot({ color, label }: { color: string; label: string }) { return <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: color }} />{label}</span> }
@@ -319,7 +337,7 @@ function WaferMap({ dies }: { dies: Die[] }) {
 }
 
 function PatternRow({ pattern, rank }: { pattern: Pattern; rank: number }) {
-  return <div className="group"><div className="flex items-center gap-3"><div className={`grid h-7 w-7 place-items-center rounded-lg text-[11px] font-semibold ${rank === 1 ? 'bg-blue-50 text-signal' : 'bg-slate-100 text-slate-500'}`}>0{rank}</div><div className="flex-1"><div className="flex items-center justify-between gap-3"><span className="text-xs font-medium text-slate-800">{pattern.name}</span><span className={`font-mono text-[11px] ${rank === 1 ? 'text-signal' : 'text-slate-500'}`}>{pattern.score}%</span></div><div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${rank === 1 ? 'bg-signal' : 'bg-slate-300'}`} style={{ width: `${Math.max(pattern.score, 4)}%` }} /></div></div></div><div className="ml-10 mt-2 text-[10px] leading-4 text-slate-500">{pattern.evidence}</div></div>
+  return <div className="group"><div className="flex items-center gap-3"><div className={`grid h-7 w-7 place-items-center rounded-lg text-[11px] font-semibold ${rank === 1 ? 'bg-blue-50 text-signal' : 'bg-slate-100 text-slate-500'}`}>0{rank}</div><div className="flex-1"><div className="flex items-center justify-between gap-3"><span className="text-xs font-medium text-slate-800">{pattern.name}</span><span className={`font-mono text-[11px] ${rank === 1 ? 'text-signal' : 'text-slate-500'}`}>{pattern.score}/100</span></div><div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${rank === 1 ? 'bg-signal' : 'bg-slate-300'}`} style={{ width: `${Math.max(pattern.score, 4)}%` }} /></div></div></div><div className="ml-10 mt-2 text-[10px] leading-4 text-slate-500">Heuristic signal strength · not AI probability · {pattern.evidence}</div></div>
 }
 
 function ZoneChart({ zones }: { zones: Wafer['zones'] }) {

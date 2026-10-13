@@ -9,6 +9,7 @@
 - Plotly 확대, 이동, hover die 정보 확인
 - 전체 die, 정상 die, 불량 die, 비활성 die, 수율, 불량률 KPI
 - 규칙 기반 `Edge ring`, `Center cluster`, `Scratch / line`, `Localized cluster` 후보 분석
+- 규칙 점수는 공간 규칙의 heuristic signal strength이며 AI 확률·정확도가 아님을 명시
 - 규칙 엔진 결과와 향후 AI 모델 연결 상태를 UI에서 분리 표시
 - 여러 wafer를 하나의 CSV로 업로드하고 비교 테이블에서 wafer 전환
 - 분석 통계 CSV 다운로드 및 데모 CSV 다운로드
@@ -26,7 +27,7 @@
 | `status` | `PASS` / `FAIL` / `INACTIVE` | 예 | 전기적 검사 결과 |
 | `bin` | integer | 아니오 | 선택 hard-bin 코드 |
 
-`GOOD`, `OK`, `P`는 `PASS`로, `BAD`, `F`는 `FAIL`로 정규화됩니다. 저장된 전체 데모 파일은 [`sample_data/wafer_demo.csv`](sample_data/wafer_demo.csv)이며, 실행 후 `http://127.0.0.1:8000/api/demo/csv`에서도 다시 받을 수 있습니다. 작은 업로드 테스트 입력은 [`work/test_upload.csv`](work/test_upload.csv)입니다.
+`GOOD`, `OK`, `P`는 `PASS`로, `BAD`, `F`는 `FAIL`로 정규화됩니다. `wafer_id`는 비어 있을 수 없고, `die_x`·`die_y`는 정수여야 하며, 동일 wafer 안에서 좌표가 중복되면 업로드가 거부됩니다. 저장된 전체 데모 파일은 [`sample_data/wafer_demo.csv`](sample_data/wafer_demo.csv)이며, 실행 후 `http://127.0.0.1:8000/api/demo/csv`에서도 다시 받을 수 있습니다. 작은 업로드 테스트 입력은 [`work/test_upload.csv`](work/test_upload.csv)입니다.
 
 ## 로컬 실행
 
@@ -62,7 +63,7 @@ python -m unittest backend.test_main -v
 pnpm build
 ```
 
-확인한 smoke test 결과: 데모 4장, 4,228 die 생성/분석, KPI와 패턴 후보 반환, status alias 정규화, 필수 컬럼 누락 거부. 브라우저에서도 `work/test_upload.csv`를 업로드해 수율 75.0%, active die 8, fail die 2가 표시되는 것을 확인했습니다.
+확인한 smoke test 결과: 데모 4장, 4,228 die 생성/분석, KPI와 패턴 후보 반환, status alias 정규화, 필수 컬럼 누락·빈 wafer ID·소수 좌표·중복 좌표 거부. 브라우저에서도 `work/test_upload.csv`를 업로드해 수율 75.0%, active die 8, fail die 2가 표시되는 것을 확인했습니다. 백엔드 연결이 없을 때는 화면 상단에 `DEMO MODE`와 `Backend unavailable`을 표시하고 로컬 fallback을 실제 업로드 분석과 구분합니다.
 
 ## Wafermap 오픈소스 라이선스 검토
 

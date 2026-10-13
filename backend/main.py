@@ -65,16 +65,30 @@ def _validate_frame(frame: pd.DataFrame) -> pd.DataFrame:
     missing = REQUIRED_COLUMNS - set(frame.columns)
     if missing:
         raise HTTPException(status_code=422, detail={"message": "Missing required columns", "missing_columns": sorted(missing), "expected_schema": schema_payload()})
-    frame["wafer_id"] = frame["wafer_id"].astype(str).str.strip()
+
+    wafer_ids = frame["wafer_id"].fillna("").astype(str).str.strip()
+    blank_id_rows = wafer_ids.eq("") | wafer_ids.str.lower().eq("nan")
+    if blank_id_rows.any():
+        raise HTTPException(status_code=422, detail={"message": "wafer_id must not be blank", "row_count": int(blank_id_rows.sum())})
+    frame["wafer_id"] = wafer_ids
     frame["status"] = frame["status"].map(_normalize_status)
-    frame["die_x"] = pd.to_numeric(frame["die_x"], errors="coerce")
-    frame["die_y"] = pd.to_numeric(frame["die_y"], errors="coerce")
-    if frame[["die_x", "die_y"]].isna().any().any():
-        raise HTTPException(status_code=422, detail="die_x and die_y must be numeric")
+    for coordinate in ("die_x", "die_y"):
+        numeric = pd.to_numeric(frame[coordinate], errors="coerce")
+        if numeric.isna().any():
+            raise HTTPException(status_code=422, detail={"message": "Coordinates must be numeric", "column": coordinate, "row_count": int(numeric.isna().sum())})
+        non_integer = ~np.isclose(numeric, np.round(numeric))
+        if non_integer.any():
+            raise HTTPException(status_code=422, detail={"message": "Coordinates must be integers", "column": coordinate, "row_count": int(non_integer.sum())})
+        frame[coordinate] = numeric.astype(int)
+
+    duplicate_rows = frame.duplicated(subset=["wafer_id", "die_x", "die_y"], keep=False)
+    if duplicate_rows.any():
+        examples = frame.loc[duplicate_rows, ["wafer_id", "die_x", "die_y"]].head(10).to_dict(orient="records")
+        raise HTTPException(status_code=422, detail={"message": "Duplicate die coordinates found within a wafer", "row_count": int(duplicate_rows.sum()), "examples": examples})
+
     invalid_status = sorted(set(frame["status"]) - ALLOWED_STATUS)
     if invalid_status:
         raise HTTPException(status_code=422, detail={"message": "Unsupported status value", "values": invalid_status, "allowed": sorted(ALLOWED_STATUS)})
-    frame = frame.dropna(subset=["wafer_id"])
     if frame.empty:
         raise HTTPException(status_code=422, detail="CSV contains no usable die rows")
     if len(frame) > 500_000:
