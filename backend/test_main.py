@@ -1,9 +1,11 @@
+import os
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 from fastapi import HTTPException
 
-from backend.main import _make_demo_frame, analyze_frame
+from backend.main import _cors_origins, _make_demo_frame, analyze_frame
 
 
 class AnalysisSmokeTests(unittest.TestCase):
@@ -35,6 +37,10 @@ class AnalysisSmokeTests(unittest.TestCase):
         with self.assertRaisesRegex(HTTPException, "Coordinates must be integers"):
             analyze_frame(pd.DataFrame([{"wafer_id": "W1", "die_x": 0.5, "die_y": 0, "status": "PASS"}]), "fractional-coordinate.csv")
 
+    def test_non_numeric_coordinates_are_rejected(self) -> None:
+        with self.assertRaisesRegex(HTTPException, "Coordinates must be numeric"):
+            analyze_frame(pd.DataFrame([{"wafer_id": "W1", "die_x": "x", "die_y": 0, "status": "PASS"}]), "non-numeric-coordinate.csv")
+
     def test_duplicate_coordinates_within_wafer_are_rejected(self) -> None:
         frame = pd.DataFrame([
             {"wafer_id": "W1", "die_x": 0, "die_y": 0, "status": "PASS"},
@@ -50,6 +56,10 @@ class AnalysisSmokeTests(unittest.TestCase):
         ])
         result = analyze_frame(frame, "multi-wafer.csv")
         self.assertEqual(len(result["wafers"]), 2)
+
+    def test_cors_origins_support_multiple_deployed_hosts(self) -> None:
+        with patch.dict(os.environ, {"FRONTEND_ORIGINS": " https://app.example.com/ ,https://preview.example.com "}):
+            self.assertEqual(_cors_origins(), ["https://app.example.com", "https://preview.example.com"])
 
 
 if __name__ == "__main__":

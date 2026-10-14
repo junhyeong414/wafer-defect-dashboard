@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import math
+import os
 from collections import Counter, deque
 from typing import Any
 
@@ -13,9 +14,19 @@ from fastapi.responses import StreamingResponse
 
 
 app = FastAPI(title="Wafer Defect Analysis API", version="1.0.0")
+
+
+def _cors_origins() -> list[str]:
+    configured = os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    )
+    return [origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

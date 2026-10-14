@@ -65,6 +65,35 @@ pnpm build
 
 확인한 smoke test 결과: 데모 4장, 4,228 die 생성/분석, KPI와 패턴 후보 반환, status alias 정규화, 필수 컬럼 누락·빈 wafer ID·소수 좌표·중복 좌표 거부. 브라우저에서도 `work/test_upload.csv`를 업로드해 수율 75.0%, active die 8, fail die 2가 표시되는 것을 확인했습니다. 백엔드 연결이 없을 때는 화면 상단에 `DEMO MODE`와 `Backend unavailable`을 표시하고 로컬 fallback을 실제 업로드 분석과 구분합니다.
 
+## 배포 준비: Render + Vercel
+
+배포 구성 파일은 저장소 루트의 [`render.yaml`](render.yaml)과 [`vercel.json`](vercel.json)입니다. GitHub 저장소에서 각각 서비스를 가져와야 하며, 계정 로그인과 최초 배포 승인 단계는 사용자가 직접 진행해야 합니다.
+
+### 1. Render에 FastAPI 배포
+
+Render에서 `New` → `Web Service`를 선택하고 이 GitHub 저장소의 `main` 브랜치를 연결합니다. Blueprint를 사용하면 `render.yaml`을 기준으로 설정할 수 있습니다. 수동 설정 시 다음 값을 사용합니다.
+
+- Root Directory: `backend`
+- Runtime: `Python`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Health Check Path: `/api/health`
+- `FRONTEND_ORIGINS`: 실제 Vercel 주소(예: `https://wafer-defect-dashboard.vercel.app`)
+
+배포가 끝나면 Render URL의 `https://...onrender.com/api/health`가 `{"status":"ok", ...}`를 반환하는지 확인합니다. Render Free 플랜은 유휴 시 sleep/cold start가 발생할 수 있습니다.
+
+### 2. Vercel에 React/Vite 배포
+
+Vercel에서 `Add New Project` → GitHub 저장소를 선택하고 `main` 브랜치를 연결합니다. `vercel.json`이 설치·빌드·정적 출력·SPA 새로고침 rewrite를 정의합니다. 프로젝트 환경변수에 다음을 추가합니다.
+
+- `VITE_API_BASE`: Render에서 발급된 API URL, 예: `https://wafer-defect-dashboard-api.onrender.com`
+
+환경변수를 저장한 뒤 Vercel을 재배포하면 CSV 업로드와 데모/분석 요청이 Render API로 전달됩니다. Vercel Preview URL을 함께 사용할 경우 Render의 `FRONTEND_ORIGINS`에 쉼표로 구분해 추가할 수 있습니다.
+
+### 배포 순서와 검증
+
+Render URL을 먼저 확보한 뒤 Vercel의 `VITE_API_BASE`에 넣고, 생성된 Vercel URL을 다시 Render의 `FRONTEND_ORIGINS`에 넣는 순서가 안전합니다. 이후 `/api/health`, 데모 모드, `sample_data/wafer_demo.csv` 업로드, 다중 wafer 전환, 통계 CSV 다운로드를 점검합니다. 실제 백엔드 연결이 끊기면 프론트엔드는 결과를 실제 업로드 분석으로 위장하지 않고 `DEMO MODE`와 `Backend unavailable`을 표시합니다.
+
 ## Wafermap 오픈소스 라이선스 검토
 
 참고한 [`wafertools/wafermap`](https://github.com/wafertools/wafermap)는 GitHub README와 npm 패키지 기준 MIT 라이선스입니다. 상업·비공개 제품에서도 사용·수정·재배포할 수 있고, 저작권 고지를 유지해야 합니다. 라이브러리는 React 등에서 쓸 수 있는 pure ES module이며 zoom/pan, tooltip, die selection, spatial analysis, lot view를 제공합니다.

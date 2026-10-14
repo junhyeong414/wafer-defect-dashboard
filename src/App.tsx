@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 import type { Analysis, Die, DieStatus, Pattern, Wafer } from './types'
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
 
 const fallbackAnalysis: Analysis = {
   source: 'DEMO / backend unavailable',
